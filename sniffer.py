@@ -2,9 +2,11 @@
 import serial
 import time
 
-print("🔍 Слушаю порт 5 секунд...")
+port = '/dev/ttyACM0' # gps+compas
+# port = '/dev/ttyUSB0'
+print(f"🔍 Слушаю порт {port} 5 секунд...")
 try:
-    ser = serial.Serial('/dev/ttyUSB0', 115200, timeout=0.5)
+    ser = serial.Serial(port, 115200, timeout=0.5)
     time.sleep(0.2)
     ser.reset_input_buffer()  # сбросить буфер на старте
     time.sleep(0.5)           # подождать первый пакет
