@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Карта датчиков рейки (азимут 130.26°)</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #e8edf2;
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        .container {
+            display: flex;
+            height: 100vh;
+            width: 100%;
+        }
+        
+        #map {
+            flex: 3;
+            height: 100%;
+        }
+        
+        .legend-panel {
+            flex: 0 0 280px;
+            background: white;
+            box-shadow: -2px 0 12px rgba(0,0,0,0.1);
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            height: 100%;
+        }
+        
+        .legend-panel h3 {
+            color: #2c3e50;
+            border-bottom: 2px solid #4a90e2;
+            padding-bottom: 8px;
+            margin-bottom: 12px;
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+        
+        .legend-section {
+            margin-bottom: 12px;
+            flex-shrink: 0;
+        }
+        
+        .legend-section h4 {
+            color: #555;
+            font-size: 12px;
+            margin-bottom: 6px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 6px;
+            font-size: 12px;
+        }
+        
+        .legend-color {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            margin-right: 8px;
+            border: 2px solid white;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+            flex-shrink: 0;
+        }
+        
+        .legend-color.red { background-color: #ff4444; }
+        .legend-color.orange { background-color: #ff8c00; }
+        .legend-color.green { background-color: #44cc44; }
+        .legend-color.blue { background-color: #4488ff; }
+        
+        .legend-arrow {
+            font-size: 18px;
+            margin-right: 8px;
+            width: 22px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        
+        .badge {
+            display: inline-block;
+            background: #4a90e2;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: bold;
+            margin-left: 5px;
+        }
+        
+        .param-list {
+            list-style: none;
+            padding-left: 0;
+        }
+        
+        .param-list li {
+            padding: 3px 0;
+            font-size: 11px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .param-list li:last-child {
+            border-bottom: none;
+        }
+        
+        .param-label {
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .direction-note {
+            background: #e8f4fd;
+            padding: 8px;
+            border-radius: 6px;
+            font-size: 11px;
+            margin-top: 8px;
+            border-left: 3px solid #4a90e2;
+        }
+        
+        .coords-note {
+            background: #f9f9f9;
+            padding: 8px;
+            border-radius: 6px;
+            font-size: 10px;
+            color: #666;
+            margin-top: 8px;
+            font-family: monospace;
+        }
+        
+        hr {
+            margin: 10px 0;
+            border: none;
+            border-top: 1px solid #ddd;
+        }
+        
+        .compact-text {
+            line-height: 1.4;
+        }
+        
+        .legend-panel::-webkit-scrollbar {
+            width: 4px;
+        }
+        
+        .legend-panel::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        
+        .legend-panel::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div id="map"></div>
+    
+    <div class="legend-panel">
+        <h3>📋 Условные обозначения</h3>
+        
+        <div class="legend-section">
+            <h4>📍 Датчики на рейке</h4>
+            <div class="legend-item">
+                <div class="legend-color red"></div>
+                <span><b>ID0</b> (базовая точка, 0.0 м)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color orange"></div>
+                <span><b>ID1</b> (+1.2 м)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color green"></div>
+                <span><b>ID2</b> (+2.4 м)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color blue"></div>
+                <span><b>ID3</b> (+3.6 м)</span>
+            </div>
+        </div>
+        
+        <div class="legend-section">
+            <h4>🧭 Направление</h4>
+            <div class="legend-item">
+                <div class="legend-arrow">➡️</div>
+                <span>Азимут рейки: <b>130.26°</b> <span class="badge">ЮВ</span></span>
+            </div>
+        </div>
+        
+        <div class="legend-section">
+            <h4>📏 Параметры рейки</h4>
+            <div class="legend-item">
+                <span>📐 Длина: <b>3.6 м</b></span>
+            </div>
+            <div class="legend-item">
+                <span>🧭 Азимут: <b>130.26°</b> (истинный)</span>
+            </div>
+            <div class="legend-item">
+                <span>📡 Источник: <b>GPS+компас</b></span>
+            </div>
+            <div class="legend-item">
+                <span>✅ Статус GEO: <b class="badge" style="background:#44cc44;">A (валидный)</b></span>
+            </div>
+        </div>
+        
+        <hr>
+        
+        <div class="legend-section">
+            <h4>📊 Параметры dual_sniffer.py</h4>
+            <ul class="param-list">
+                <li><span class="param-label">📍 Геопозиционер:</span> 200 Гц</li>
+                <li><span class="param-label">🧲 GPS+компас:</span> 10 Гц</li>
+                <li><span class="param-label">⏱️ Синхронизация:</span> ±25 мс</li>
+                <li><span class="param-label">🧭 Магн. склонение:</span> учтено</li>
+                <li><span class="param-label">📈 Интерполяция:</span> линейная X,Y,Z</li>
+            </ul>
+        </div>
+        
+        <div class="direction-note compact-text">
+            <strong>🧭 Рассчитанное направление</strong><br>
+            Азимут <strong>130.259°</strong> от севера → движение на <strong>юго-восток</strong><br>
+            <span style="font-size:10px;">Курс движения: 217.13° (ЮЗ)</span>
+        </div>
+        
+        <div class="coords-note compact-text">
+            <strong>📐 Расчёт координат датчиков</strong><br>
+            База: 54.7415337°N, 20.5008875°E<br>
+            Смещения вдоль азимута 130.26°<br>
+            Шаг между датчиками: 1.2 м
+        </div>
+    </div>
+</div>
+
+<script>
+    // Данные сенсоров из вывода dual_sniffer.py
+    const sensors = [
+        { id: 0, offset_m: 0.0, lat: 54.7415337, lng: 20.5008875, color: '#ff4444' },
+        { id: 1, offset_m: 1.2, lat: 54.7415254, lng: 20.5008754, color: '#ff8c00' },
+        { id: 2, offset_m: 2.4, lat: 54.7415172, lng: 20.5008634, color: '#44cc44' },
+        { id: 3, offset_m: 3.6, lat: 54.7415090, lng: 20.5008513, color: '#4488ff' }
+    ];
+    
+    const azimuth_true = 130.25854060106002;
+    
+    // Центр карты по базовой точке
+    const centerLat = sensors[0].lat;
+    const centerLng = sensors[0].lng;
+    
+    // Инициализация карты
+    const map = L.map('map', {
+        zoomControl: true,
+        scrollWheelZoom: true,
+        doubleClickZoom: true,
+        zoomSnap: 0.25,
+        zoomDelta: 0.5
+    }).setView([centerLat, centerLng], 22);
+    
+    // Базовая карта CartoDB Voyager
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors &copy; <a href="https://carto.com/">CARTO</a>',
+        subdomains: 'abcd',
+        maxZoom: 22,
+        minZoom: 15
+    }).addTo(map);
+    
+    // Дополнительный слой подписей
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OSM contributors',
+        subdomains: 'abcd',
+        maxZoom: 20,
+        minZoom: 15,
+        opacity: 0.85
+    }).addTo(map);
+    
+    // Функция для расчёта расстояния
+    function haversineDistance(lat1, lon1, lat2, lon2) {
+        const R = 6371000;
+        const φ1 = lat1 * Math.PI/180;
+        const φ2 = lat2 * Math.PI/180;
+        const Δφ = (lat2-lat1) * Math.PI/180;
+        const Δλ = (lon2-lon1) * Math.PI/180;
+        const a = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+    
+    // Функция для смещения точки перпендикулярно линии (чтобы убрать подпись в сторону)
+    function offsetPoint(lat, lng, bearing, distance_m, side) {
+        // side: 'left' или 'right' относительно направления движения
+        const R = 6371000;
+        const perpendicular = side === 'right' ? bearing - 90 : bearing + 90;
+        const φ1 = lat * Math.PI/180;
+        const λ1 = lng * Math.PI/180;
+        const θ = perpendicular * Math.PI/180;
+        
+        const φ2 = Math.asin(Math.sin(φ1) * Math.cos(distance_m / R) +
+                              Math.cos(φ1) * Math.sin(distance_m / R) * Math.cos(θ));
+        const λ2 = λ1 + Math.atan2(Math.sin(θ) * Math.sin(distance_m / R) * Math.cos(φ1),
+                                   Math.cos(distance_m / R) - Math.sin(φ1) * Math.sin(φ2));
+        
+        return { lat: φ2 * 180 / Math.PI, lng: λ2 * 180 / Math.PI };
+    }
+    
+    // Добавляем маркеры и линии
+    let previousPoint = null;
+    const points = [];
+    
+    sensors.forEach(sensor => {
+        const iconHtml = `
+            <div style="
+                background-color: ${sensor.color};
+                width: 36px;
+                height: 36px;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: white;
+                font-weight: bold;
+                font-size: 15px;
+                border: 3px solid white;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+                cursor: pointer;
+                z-index: 1000;
+            ">${sensor.id}</div>
+        `;
+        
+        const customIcon = L.divIcon({
+            html: iconHtml,
+            className: 'custom-div-icon',
+            iconSize: [36, 36],
+            popupAnchor: [0, -18]
+        });
+        
+        const marker = L.marker([sensor.lat, sensor.lng], { icon: customIcon }).addTo(map);
+        
+        marker.bindPopup(`
+            <b>🧲 Датчик ID ${sensor.id}</b><br>
+            <hr style="margin:5px 0">
+            📏 Смещение от базы: <b>${sensor.offset_m} м</b><br>
+            🌐 Широта: ${sensor.lat.toFixed(7)}°<br>
+            🌐 Долгота: ${sensor.lng.toFixed(7)}°
+        `, { maxWidth: 220 });
+        
+        marker.bindTooltip(`Датчик ${sensor.id} (${sensor.offset_m} м)`, { 
+            permanent: false, 
+            direction: 'top',
+            offset: [0, -20]
+        });
+        
+        points.push([sensor.lat, sensor.lng]);
+        
+        if (previousPoint) {
+            L.polyline([previousPoint, [sensor.lat, sensor.lng]], {
+                color: '#ff8888',
+                weight: 3,
+                opacity: 0.8
+            }).addTo(map);
+        }
+        previousPoint = [sensor.lat, sensor.lng];
+    });
+    
+    // Основная линия рейки
+    L.polyline(points, {
+        color: '#2c3e50',
+        weight: 5,
+        opacity: 0.95
+    }).addTo(map);
+    
+    // === СТРЕЛКА И ПОДПИСЬ АЗИМУТА СМЕЩЕНЫ В СТОРОНУ ===
+    // Находим точку для подписи (смещаем вправо от середины рейки)
+    const midPoint = {
+        lat: (sensors[0].lat + sensors[3].lat) / 2,
+        lng: (sensors[0].lng + sensors[3].lng) / 2
+    };
+    
+    // Смещаем подпись на 8 метров вправо (перпендикулярно направлению рейки)
+    const offsetLabel = offsetPoint(midPoint.lat, midPoint.lng, azimuth_true, 8, 'right');
+    
+    // Подпись азимута (смещённая)
+    L.marker([offsetLabel.lat, offsetLabel.lng], {
+        icon: L.divIcon({
+            html: `<div style="
+                background: rgba(0,0,0,0.8);
+                color: white;
+                padding: 6px 16px;
+                border-radius: 25px;
+                font-size: 13px;
+                font-weight: bold;
+                white-space: nowrap;
+                border: 1px solid rgba(255,255,255,0.4);
+                backdrop-filter: blur(4px);
+                font-family: monospace;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                pointer-events: none;
+            ">🧭 Азимут ${azimuth_true.toFixed(2)}° (Юго-Восток)</div>`,
+            iconSize: [230, 34]
+        })
+    }).addTo(map);
+    
+    // Соединительная линия от подписи к рейке (пунктир)
+    L.polyline([[midPoint.lat, midPoint.lng], [offsetLabel.lat, offsetLabel.lng]], {
+        color: '#888',
+        weight: 1.5,
+        dashArray: '5, 5',
+        opacity: 0.5,
+        interactive: false
+    }).addTo(map);
+    
+    // Стрелку тоже смещаем подальше от ID3 (на 4 метра вперёд и 3 метра в сторону)
+    const arrowOffset = offsetPoint(sensors[3].lat, sensors[3].lng, azimuth_true, 4, 'left');
+    
+    L.marker([arrowOffset.lat, arrowOffset.lng], {
+        icon: L.divIcon({
+            html: `<div style="
+                font-size: 38px;
+                filter: drop-shadow(0 2px 5px rgba(0,0,0,0.5));
+                transform: rotate(${azimuth_true - 90}deg);
+                pointer-events: none;
+            ">➡️</div>`,
+            iconSize: [40, 40]
+        })
+    }).addTo(map);
+    
+    // Маленькая стрелка-указатель на конце рейки (прозрачная, для связи)
+    L.polyline([[sensors[3].lat, sensors[3].lng], [arrowOffset.lat, arrowOffset.lng]], {
+        color: '#aaa',
+        weight: 1.5,
+        dashArray: '3, 4',
+        opacity: 0.4,
+        interactive: false
+    }).addTo(map);
+    
+    // Маркеры расстояний через 0.6 м
+    for (let i = 0.6; i <= 3.0; i += 0.6) {
+        const t = i / 3.6;
+        const lat_i = sensors[0].lat + (sensors[3].lat - sensors[0].lat) * t;
+        const lng_i = sensors[0].lng + (sensors[3].lng - sensors[0].lng) * t;
+        
+        L.circleMarker([lat_i, lng_i], {
+            radius: 4,
+            color: '#ffaa44',
+            weight: 2,
+            fillColor: '#ffcc44',
+            fillOpacity: 0.9
+        }).addTo(map).bindTooltip(`${i.toFixed(1)} м`, { permanent: false, direction: 'top' });
+    }
+    
+    // Настройки карты
+    map.setMaxZoom(22);
+    map.setMinZoom(18);
+    map.fitBounds(L.latLngBounds(points).pad(0.02));
+    
+    // Масштабная линейка
+    L.control.scale({ metric: true, imperial: false, position: 'bottomleft' }).addTo(map);
+    
+    // Вывод информации в консоль
+    const actualLength = haversineDistance(
+        sensors[0].lat, sensors[0].lng,
+        sensors[3].lat, sensors[3].lng
+    );
+    
+    console.log("=== КАРТА С ОТНЕСЁННОЙ СТРЕЛКОЙ ===");
+    console.log(`Азимут: ${azimuth_true.toFixed(4)}°`);
+    console.log(`Длина рейки: ${actualLength.toFixed(3)} м (погрешность: ${Math.abs(actualLength - 3.6).toFixed(4)} м)`);
+    console.log(`Подпись и стрелка смещены, чтобы не перекрывать датчики`);
+    
+    // Приветственный попап
+    setTimeout(() => {
+        map.openPopup(
+            `<b>✅ Стрелка и подпись смещены в сторону</b><br>
+             📍 Датчики теперь хорошо видны<br>
+             🧭 Азимут: ${azimuth_true.toFixed(2)}°<br>
+             🔍 Максимальный зум: 22x`,
+            [centerLat, centerLng],
+            { closeButton: true, autoClose: 3500 }
+        );
+    }, 500);
+</script>
+</body>
+</html>

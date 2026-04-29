@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """
-dual_sniffer.py v1.4
+dual_sniffer.py v1.5
 Параллельный опрос двух устройств (200 Гц CSV + 10 Гц NMEA+MAG)
 с синхронизацией, интерполяцией магнитных данных и расчётом позиций датчиков.
+ИСПРАВЛЕНИЯ v1.5:
+  - Рейка теперь по умолчанию перпендикулярна направлению движения (--rail-angle 90.0)
+  - Исправлен баг в _print_console (ground_spe -> course)
+  - Полная структура geo полей, корректный if mag_
 """
 
 import argparse
@@ -66,16 +70,20 @@ def interpolate_mag(t_target: float, t_prev: float, t_next: float,
         'z': m_prev['z'] + alpha * (m_next['z'] - m_prev['z'])
     }
 
-def calculate_sensor_offsets(lat: float, lon: float, azimuth: float, offsets: List[float]) -> List[Dict]:
-    if lat is None or lon is None or azimuth is None: return []
+def calculate_sensor_offsets(lat: float, lon: float, rail_bearing: float, offsets: List[float]) -> List[Dict]:
+    """
+    Расчёт координат датчиков вдоль рейки с заданным пеленгом.
+    :param rail_bearing: направление рейки в градусах (0=север, по часовой)
+    """
+    if lat is None or lon is None or rail_bearing is None: return []
     m_lat = 111320.0
     m_lon = 111320.0 * math.cos(math.radians(lat))
     if abs(m_lon) < 1.0: m_lon = 1.0
-    az_rad = math.radians(azimuth)
+    br_rad = math.radians(rail_bearing)
     return [{
         'id': i, 'offset_m': round(off, 2),
-        'latitude': round(lat + (off * math.cos(az_rad)) / m_lat, 7),
-        'longitude': round(lon + (off * math.sin(az_rad)) / m_lon, 7)
+        'latitude': round(lat + (off * math.cos(br_rad)) / m_lat, 7),
+        'longitude': round(lon + (off * math.sin(br_rad)) / m_lon, 7)
     } for i, off in enumerate(offsets)]
 
 # ============================================================================
@@ -92,19 +100,14 @@ def parse_plain_csv(line: str, sys_time: float) -> Optional[Dict]:
         try: return float(v) if v.strip() else None
         except: return None
 
-    lat_r, lon_r = f[3].strip(), f[5].strip()
-    lat_dec = dmm_to_decimal(lat_r, f[4].strip())
-    lon_dec = dmm_to_decimal(lon_r, f[6].strip())
-
     return {
         'timestamp_sys': sys_time, 'type': 'geo_csv',
         'sensor_id': f[0].strip(), 'utc_time': sf(f[1]), 'state': f[2].strip(),
-        'latitude': lat_dec, 'n_s_indica': f[4].strip(),
-        'longitude': lon_dec, 'e_w_indica': f[6].strip(),
+        'latitude': dmm_to_decimal(f[3].strip(), f[4].strip()), 'n_s_indica': f[4].strip(),
+        'longitude': dmm_to_decimal(f[5].strip(), f[6].strip()), 'e_w_indica': f[6].strip(),
         'ground_spe': sf(f[7]), 'position': sf(f[8]), 'date': sf(f[9]),
         'f2': sf(f[10]), 'f3': sf(f[11]), 'alarm': f[12].strip() in ('1', 'True', 'true'),
-        # Внутренние алиасы для логики слияния (не попадут в выходной JSON)
-        '_course': sf(f[8]), '_status': f[2].strip()
+        '_course': sf(f[8]), '_status': f[2].strip()  # Внутренние алиасы
     }
 
 def parse_nmea_extended(line: str, sys_time: float, declination: float = 0.0) -> Optional[Dict]:
@@ -201,9 +204,10 @@ class SerialWorker:
 # ============================================================================
 
 class StreamMerger:
-    def __init__(self, q_geo, q_mag, declination, offsets, callback, stop_evt):
+    def __init__(self, q_geo, q_mag, declination, offsets, rail_angle, callback, stop_evt):
         self.q_geo, self.q_mag = q_geo, q_mag
-        self.declination, self.offsets, self.callback, self.stop_evt = declination, offsets, callback, stop_evt
+        self.declination, self.offsets, self.rail_angle = declination, offsets, rail_angle
+        self.callback, self.stop_evt = callback, stop_evt
         self.mag_buffer = []
         self.last_out, self.throttle = 0, 1.0 / DEFAULT_CONSOLE_THROTTLE_HZ
         self.stats = {'merged': 0, 'interpolated': 0}
@@ -240,16 +244,19 @@ class StreamMerger:
         lat = geo.get('latitude') or (mag_ctx.get('latitude') if mag_ctx else None)
         lon = geo.get('longitude') or (mag_ctx.get('longitude') if mag_ctx else None)
 
-        az = None
+        # Направление движения (азимут рейки)
+        azimuth = None
         if mag_ctx and mag_ctx.get('magnetometer'):
-            az = mag_ctx['magnetometer'].get('azimuth')
-        if az is None:
-            az = geo.get('_course') or (mag_ctx.get('course_true') if mag_ctx else None)
+            azimuth = mag_ctx['magnetometer'].get('azimuth')
+        if azimuth is None:
+            azimuth = geo.get('_course') or (mag_ctx.get('course_true') if mag_ctx else None)
+
+        # 📐 НАПРАВЛЕНИЕ РЕЙКИ = курс + угол смещения (по умолчанию 90° = перпендикуляр)
+        rail_bearing = (azimuth + self.rail_angle) % 360.0 if azimuth is not None else None
 
         mag_t = mag_ctx.get('timestamp_sys') if mag_ctx else None
         delta = abs(t - mag_t) * 1000 if mag_t is not None else 0.0
 
-        # Очистка geo от внутренних ключей (_)
         geo_out = {k: v for k, v in geo.items() if not k.startswith('_')}
 
         return {
@@ -257,12 +264,12 @@ class StreamMerger:
             'sync': {'geo_time': geo.get('timestamp_sys'), 'mag_time': mag_t,
                      'delta_ms': round(delta, 2), 'interpolated': bool(mag_ctx and mag_t != t)},
             'geo': geo_out,
-            'gps': {'latitude': lat, 'longitude': lon, 'azimuth_true': az,
+            'gps': {'latitude': lat, 'longitude': lon, 'azimuth_true': azimuth,
                     'course_true': geo.get('_course') or (mag_ctx.get('course_true') if mag_ctx else None),
                     'valid_geo': geo.get('_status') == 'A'},
             'mag': mag_ctx.get('magnetometer') if mag_ctx else None,
-            'sensors': calculate_sensor_offsets(lat, lon, az, self.offsets),
-            'valid': bool(lat and lon and az)
+            'sensors': calculate_sensor_offsets(lat, lon, rail_bearing, self.offsets),
+            'valid': bool(lat and lon and azimuth)
         }
 
     def run(self):
@@ -319,7 +326,8 @@ class StreamMerger:
         s = "✅" if rec['valid'] else "⚠️"
         lat = rec['gps'].get('latitude') or rec['geo'].get('latitude')
         lon = rec['gps'].get('longitude') or rec['geo'].get('longitude')
-        az = rec['gps'].get('azimuth_true') or rec['geo'].get('ground_spe')
+        # ✅ Исправлено: берём azimuth_true или course, а не ground_spe
+        az = rec['gps'].get('azimuth_true') or rec['geo'].get('_course')
         d = rec['sync'].get('delta_ms', 0)
         
         ls = f"{lat:.5f}" if lat is not None else "------"
@@ -344,20 +352,22 @@ class OutputHandler:
             if self.file: self.file.close(); logger.info(f"Файл сохранён")
 
 def parse_args():
-    p = argparse.ArgumentParser(description='Dual Sniffer v1.4')
+    p = argparse.ArgumentParser(description='Dual Sniffer v1.5')
     p.add_argument('--geo-port', default='/dev/ttyUSB0')
     p.add_argument('--geo-baud', type=int, default=115200)
     p.add_argument('--mag-port', default='/dev/ttyACM0')
     p.add_argument('--mag-baud', type=int, default=9600)
     p.add_argument('--declination', '-d', type=float, default=0.0)
     p.add_argument('--offsets', type=str, default=','.join(map(str, DEFAULT_SENSOR_OFFSETS_M)))
+    p.add_argument('--rail-angle', type=float, default=90.0,
+                   help='Угол ориентации рейки относительно направления движения (90°=перпендикуляр, 0°=вдоль)')
     p.add_argument('--output', '-o', type=str, default=None)
     return p.parse_args()
 
 def main():
     args = parse_args()
-    logger.info(f"Dual Sniffer v1.4 | GEO:{args.geo_port}@{args.geo_baud} | MAG:{args.mag_port}@{args.mag_baud}")
-    logger.info(f"Decl:{args.declination}° | Offsets:[{args.offsets}]м | Sync:±25мс")
+    logger.info(f"Dual Sniffer v1.5 | GEO:{args.geo_port}@{args.geo_baud} | MAG:{args.mag_port}@{args.mag_baud}")
+    logger.info(f"Decl:{args.declination}° | Offsets:[{args.offsets}]м | RailAngle:{args.rail_angle}°")
     
     try: offsets = [float(x) for x in args.offsets.split(',')]
     except ValueError: logger.error("Неверный формат --offsets"); sys.exit(1)
@@ -368,7 +378,7 @@ def main():
 
     w_geo = SerialWorker(args.geo_port, args.geo_baud, parse_plain_csv, q_geo, "GEO", stop)
     w_mag = SerialWorker(args.mag_port, args.mag_baud, lambda txt, ts: parse_nmea_extended(txt, ts, args.declination), q_mag, "MAG", stop)
-    merger = StreamMerger(q_geo, q_mag, args.declination, offsets, out.write, stop)
+    merger = StreamMerger(q_geo, q_mag, args.declination, offsets, args.rail_angle, out.write, stop)
 
     threads = [
         threading.Thread(target=w_geo.run, daemon=True),

@@ -88,3 +88,22 @@ head -n 10 data.jsonl | python3 -m json.tool
     "valid": true  # true, если для кадра доступны координаты и азимут (годен для отрисовки/расчётов)
 }
 ```
+
+## [MAP](map.html)
+
+## 🗺️ Визуализация расположения датчиков на рейке
+
+Ниже представлена интерактивная карта с расчётными координатами 4 датчиков (азимут 131°, юго-восток).
+
+<div style="border: 1px solid #ddd; border-radius: 8px; overflow: hidden; margin: 20px 0;">
+  <iframe 
+    src="https://cdn.raw.githubusercontent.com/ваш-username/ваш-репозиторий/main/map.html" 
+    width="100%" 
+    height="500px" 
+    style="border: none;"
+    title="Карта датчиков рейки"
+    loading="lazy">
+  </iframe>
+</div>
+
+*Наведите на маркеры для просмотра информации, используйте колёсико мыши для масштабирования.*
