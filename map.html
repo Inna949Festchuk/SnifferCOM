@@ -1,497 +1,282 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
-    <title>Карта датчиков рейки (азимут 130.26°)</title>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Карта магнитометрической косы</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        body { margin: 0; padding: 0; font-family: 'Segoe UI', Arial, sans-serif; background: #f8f9fa; }
+        #map { height: 100vh; width: 100%; }
         
-        body {
-            font-family: 'Segoe UI', Arial, sans-serif;
-            background: #e8edf2;
-            height: 100vh;
-            overflow: hidden;
-        }
-        
-        .container {
-            display: flex;
-            height: 100vh;
-            width: 100%;
-        }
-        
-        #map {
-            flex: 3;
-            height: 100%;
-        }
-        
-        .legend-panel {
-            flex: 0 0 280px;
-            background: white;
-            box-shadow: -2px 0 12px rgba(0,0,0,0.1);
-            padding: 16px;
-            display: flex;
-            flex-direction: column;
-            overflow-y: auto;
-            height: 100%;
-        }
-        
-        .legend-panel h3 {
-            color: #2c3e50;
-            border-bottom: 2px solid #4a90e2;
-            padding-bottom: 8px;
-            margin-bottom: 12px;
-            font-size: 16px;
-            flex-shrink: 0;
-        }
-        
-        .legend-section {
-            margin-bottom: 12px;
-            flex-shrink: 0;
-        }
-        
-        .legend-section h4 {
-            color: #555;
+        /* 🎯 Легенда (справа, сверху) */
+        #legend {
+            position: absolute; top: 15px; right: 15px;
+            background: rgba(255,255,255,0.98); padding: 12px 16px;
+            border-radius: 8px; box-shadow: 0 3px 14px rgba(0,0,0,0.2);
+            z-index: 1000; 
+            width: 240px; /* Фиксированная ширина для выравнивания */
             font-size: 12px;
-            margin-bottom: 6px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
         }
+        #legend h3 { margin: 0 0 10px 0; font-size: 13px; color: #333; font-weight: 600; border-bottom: 1px solid #eee; padding-bottom: 6px; }
+        .legend-item { display: flex; align-items: center; margin: 7px 0; }
+        .legend-color {
+            width: 20px; height: 20px; margin-right: 10px;
+            border-radius: 50%; display: inline-block; flex-shrink: 0;
+            border: 2px solid rgba(0,0,0,0.1);
+        }
+        .legend-line {
+            width: 20px; height: 3px; margin-right: 10px;
+            display: inline-block; flex-shrink: 0;
+        }
+        .legend-label { color: #444; }
         
-        .legend-item {
+        /* 📋 Панель информации (справа, снизу) */
+        #info {
+            position: absolute; 
+            bottom: 35px; /* Отступ снизу, чтобы не перекрыть Attribution Leaflet */
+            right: 15px;
+            background: rgba(255,255,255,0.98); padding: 12px 16px;
+            border-radius: 8px; box-shadow: 0 3px 14px rgba(0,0,0,0.2);
+            z-index: 1000; 
+            width: 240px; /* Та же ширина, что у легенды */
+            font-size: 13px;
+        }
+        #info h2 { margin: 0 0 10px 0; font-size: 15px; color: #222; border-bottom: 1px solid #eee; padding-bottom: 8px; }
+        .info-row { display: flex; justify-content: space-between; margin: 5px 0; }
+        .info-label { font-weight: 600; color: #555; }
+        .info-value { color: #0066cc; font-family: monospace; font-size: 12px; }
+        
+        /* Кнопка Пауза/Старт */
+        #toggle-btn {
+            width: 100%;
+            margin-top: 10px;
+            padding: 8px 12px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
             display: flex;
             align-items: center;
-            margin-bottom: 6px;
-            font-size: 12px;
+            justify-content: center;
+            gap: 6px;
         }
+        #toggle-btn:hover { background: #0056b3; }
+        #toggle-btn.paused { background: #28a745; }
+        #toggle-btn.paused:hover { background: #218838; }
         
-        .legend-color {
-            width: 22px;
-            height: 22px;
-            border-radius: 50%;
-            margin-right: 8px;
-            border: 2px solid white;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.2);
-            flex-shrink: 0;
+        /* Статус */
+        #status {
+            padding: 6px 12px; border-radius: 5px; margin-top: 10px;
+            font-size: 12px; font-weight: 500; text-align: center;
         }
+        .status-ok { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .status-error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .status-wait { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        .status-paused { background: #e2e3e5; color: #383d41; border: 1px solid #d6d8db; }
         
-        .legend-color.red { background-color: #ff4444; }
-        .legend-color.orange { background-color: #ff8c00; }
-        .legend-color.green { background-color: #44cc44; }
-        .legend-color.blue { background-color: #4488ff; }
-        
-        .legend-arrow {
-            font-size: 18px;
-            margin-right: 8px;
-            width: 22px;
-            text-align: center;
-            flex-shrink: 0;
-        }
-        
-        .badge {
-            display: inline-block;
-            background: #4a90e2;
-            color: white;
-            padding: 2px 6px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: bold;
-            margin-left: 5px;
-        }
-        
-        .param-list {
-            list-style: none;
-            padding-left: 0;
-        }
-        
-        .param-list li {
-            padding: 3px 0;
-            font-size: 11px;
-            border-bottom: 1px solid #eee;
-        }
-        
-        .param-list li:last-child {
-            border-bottom: none;
-        }
-        
-        .param-label {
-            font-weight: 600;
-            color: #2c3e50;
-        }
-        
-        .direction-note {
-            background: #e8f4fd;
-            padding: 8px;
-            border-radius: 6px;
-            font-size: 11px;
-            margin-top: 8px;
-            border-left: 3px solid #4a90e2;
-        }
-        
-        .coords-note {
-            background: #f9f9f9;
-            padding: 8px;
-            border-radius: 6px;
-            font-size: 10px;
-            color: #666;
-            margin-top: 8px;
-            font-family: monospace;
-        }
-        
-        hr {
-            margin: 10px 0;
-            border: none;
-            border-top: 1px solid #ddd;
-        }
-        
-        .compact-text {
-            line-height: 1.4;
-        }
-        
-        .legend-panel::-webkit-scrollbar {
-            width: 4px;
-        }
-        
-        .legend-panel::-webkit-scrollbar-track {
-            background: #f1f1f1;
-        }
-        
-        .legend-panel::-webkit-scrollbar-thumb {
-            background: #888;
-            border-radius: 2px;
-        }
+        /* Поп-апы */
+        .sensor-popup { font-size: 11px; line-height: 1.4; }
+        .sensor-popup b { color: #3388ff; font-size: 12px; }
     </style>
 </head>
 <body>
-<div class="container">
-    <div id="map"></div>
-    
-    <div class="legend-panel">
-        <h3>📋 Условные обозначения</h3>
-        
-        <div class="legend-section">
-            <h4>📍 Датчики на рейке</h4>
-            <div class="legend-item">
-                <div class="legend-color red"></div>
-                <span><b>ID0</b> (базовая точка, 0.0 м)</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color orange"></div>
-                <span><b>ID1</b> (+1.2 м)</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color green"></div>
-                <span><b>ID2</b> (+2.4 м)</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color blue"></div>
-                <span><b>ID3</b> (+3.6 м)</span>
-            </div>
+    <!-- 🎯 Легенда (справа, сверху) -->
+    <div id="legend">
+        <h3>🗂️ Условные обозначения</h3>
+        <div class="legend-item">
+            <span class="legend-color" style="background:#ff4444; border-color:#cc0000;"></span>
+            <span class="legend-label">GPS-антенна (база)</span>
         </div>
-        
-        <div class="legend-section">
-            <h4>🧭 Направление</h4>
-            <div class="legend-item">
-                <div class="legend-arrow">➡️</div>
-                <span>Азимут рейки: <b>130.26°</b> <span class="badge">ЮВ</span></span>
-            </div>
+        <div class="legend-item">
+            <span class="legend-color" style="background:#3388ff; border-color:#0066cc;"></span>
+            <span class="legend-label">Датчики S1–S4</span>
         </div>
-        
-        <div class="legend-section">
-            <h4>📏 Параметры рейки</h4>
-            <div class="legend-item">
-                <span>📐 Длина: <b>3.6 м</b></span>
-            </div>
-            <div class="legend-item">
-                <span>🧭 Азимут: <b>130.26°</b> (истинный)</span>
-            </div>
-            <div class="legend-item">
-                <span>📡 Источник: <b>GPS+компас</b></span>
-            </div>
-            <div class="legend-item">
-                <span>✅ Статус GEO: <b class="badge" style="background:#44cc44;">A (валидный)</b></span>
-            </div>
+        <div class="legend-item">
+            <span class="legend-line" style="background:#ff8800; border:1px dashed #cc6600;"></span>
+            <span class="legend-label">Линия косы (перпендикуляр курсу)</span>
         </div>
-        
-        <hr>
-        
-        <div class="legend-section">
-            <h4>📊 Параметры dual_sniffer.py</h4>
-            <ul class="param-list">
-                <li><span class="param-label">📍 Геопозиционер:</span> 200 Гц</li>
-                <li><span class="param-label">🧲 GPS+компас:</span> 10 Гц</li>
-                <li><span class="param-label">⏱️ Синхронизация:</span> ±25 мс</li>
-                <li><span class="param-label">🧭 Магн. склонение:</span> учтено</li>
-                <li><span class="param-label">📈 Интерполяция:</span> линейная X,Y,Z</li>
-            </ul>
+        <div class="legend-item">
+            <span class="legend-line" style="background:#00cc00;"></span>
+            <span class="legend-label">Направление движения</span>
         </div>
-        
-        <div class="direction-note compact-text">
-            <strong>🧭 Рассчитанное направление</strong><br>
-            Азимут <strong>130.259°</strong> от севера → движение на <strong>юго-восток</strong><br>
-            <span style="font-size:10px;">Курс движения: 217.13° (ЮЗ)</span>
-        </div>
-        
-        <div class="coords-note compact-text">
-            <strong>📐 Расчёт координат датчиков</strong><br>
-            База: 54.7415337°N, 20.5008875°E<br>
-            Смещения вдоль азимута 130.26°<br>
-            Шаг между датчиками: 1.2 м
+        <div class="legend-item">
+            <span class="legend-line" style="background:#9933ff; opacity:0.6;"></span>
+            <span class="legend-label">Трекинг (последние 100 точек)</span>
         </div>
     </div>
-</div>
 
-<script>
-    // Данные сенсоров из вывода dual_sniffer.py
-    const sensors = [
-        { id: 0, offset_m: 0.0, lat: 54.7415337, lng: 20.5008875, color: '#ff4444' },
-        { id: 1, offset_m: 1.2, lat: 54.7415254, lng: 20.5008754, color: '#ff8c00' },
-        { id: 2, offset_m: 2.4, lat: 54.7415172, lng: 20.5008634, color: '#44cc44' },
-        { id: 3, offset_m: 3.6, lat: 54.7415090, lng: 20.5008513, color: '#4488ff' }
-    ];
-    
-    const azimuth_true = 130.25854060106002;
-    
-    // Центр карты по базовой точке
-    const centerLat = sensors[0].lat;
-    const centerLng = sensors[0].lng;
-    
-    // Инициализация карты
-    const map = L.map('map', {
-        zoomControl: true,
-        scrollWheelZoom: true,
-        doubleClickZoom: true,
-        zoomSnap: 0.25,
-        zoomDelta: 0.5
-    }).setView([centerLat, centerLng], 22);
-    
-    // Базовая карта CartoDB Voyager
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors &copy; <a href="https://carto.com/">CARTO</a>',
-        subdomains: 'abcd',
-        maxZoom: 22,
-        minZoom: 15
-    }).addTo(map);
-    
-    // Дополнительный слой подписей
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; OSM contributors',
-        subdomains: 'abcd',
-        maxZoom: 20,
-        minZoom: 15,
-        opacity: 0.85
-    }).addTo(map);
-    
-    // Функция для расчёта расстояния
-    function haversineDistance(lat1, lon1, lat2, lon2) {
-        const R = 6371000;
-        const φ1 = lat1 * Math.PI/180;
-        const φ2 = lat2 * Math.PI/180;
-        const Δφ = (lat2-lat1) * Math.PI/180;
-        const Δλ = (lon2-lon1) * Math.PI/180;
-        const a = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
-        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    }
-    
-    // Функция для смещения точки перпендикулярно линии (чтобы убрать подпись в сторону)
-    function offsetPoint(lat, lng, bearing, distance_m, side) {
-        // side: 'left' или 'right' относительно направления движения
-        const R = 6371000;
-        const perpendicular = side === 'right' ? bearing - 90 : bearing + 90;
-        const φ1 = lat * Math.PI/180;
-        const λ1 = lng * Math.PI/180;
-        const θ = perpendicular * Math.PI/180;
+    <!-- 📋 Информация (справа, снизу) -->
+    <div id="info">
+        <h2>📋 Магнитометрическая коса</h2>
+        <div class="info-row"><span class="info-label">📍 GPS:</span><span class="info-value" id="gps-coords">Загрузка...</span></div>
+        <div class="info-row"><span class="info-label">🧭 Азимут:</span><span class="info-value" id="azimuth">-</span></div>
+        <div class="info-row"><span class="info-label">📏 Вынос:</span><span class="info-value" id="offset">-</span></div>
+        <div class="info-row"><span class="info-label">📐 Шаг:</span><span class="info-value" id="spacing">-</span></div>
+        <div class="info-row"><span class="info-label">⏱️ Обновлено:</span><span class="info-value" id="last-update">-</span></div>
+        <div id="status" class="status-wait">Подключение...</div>
         
-        const φ2 = Math.asin(Math.sin(φ1) * Math.cos(distance_m / R) +
-                              Math.cos(φ1) * Math.sin(distance_m / R) * Math.cos(θ));
-        const λ2 = λ1 + Math.atan2(Math.sin(θ) * Math.sin(distance_m / R) * Math.cos(φ1),
-                                   Math.cos(distance_m / R) - Math.sin(φ1) * Math.sin(φ2));
+        <!-- 🔘 Кнопка Пауза/Старт -->
+        <button id="toggle-btn" onclick="toggleAutoPan()">
+            <span id="toggle-icon">⏸️</span>
+            <span id="toggle-text">Пауза</span>
+        </button>
+    </div>
+
+    <div id="map"></div>
+
+    <script>
+        // 🗺️ Инициализация карты с CartoDB
+        const map = L.map('map', { zoomControl: true, minZoom: 18, maxZoom: 23 });
         
-        return { lat: φ2 * 180 / Math.PI, lng: λ2 * 180 / Math.PI };
-    }
-    
-    // Добавляем маркеры и линии
-    let previousPoint = null;
-    const points = [];
-    
-    sensors.forEach(sensor => {
-        const iconHtml = `
-            <div style="
-                background-color: ${sensor.color};
-                width: 36px;
-                height: 36px;
-                border-radius: 50%;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                color: white;
-                font-weight: bold;
-                font-size: 15px;
-                border: 3px solid white;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-                cursor: pointer;
-                z-index: 1000;
-            ">${sensor.id}</div>
-        `;
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+            attribution: '© OpenStreetMap © CartoDB',
+            subdomains: 'abcd',
+            maxZoom: 23
+        }).addTo(map);
+
+        // Состояние авто-панорамирования
+        let autoPanEnabled = true;
         
-        const customIcon = L.divIcon({
-            html: iconHtml,
-            className: 'custom-div-icon',
-            iconSize: [36, 36],
-            popupAnchor: [0, -18]
-        });
-        
-        const marker = L.marker([sensor.lat, sensor.lng], { icon: customIcon }).addTo(map);
-        
-        marker.bindPopup(`
-            <b>🧲 Датчик ID ${sensor.id}</b><br>
-            <hr style="margin:5px 0">
-            📏 Смещение от базы: <b>${sensor.offset_m} м</b><br>
-            🌐 Широта: ${sensor.lat.toFixed(7)}°<br>
-            🌐 Долгота: ${sensor.lng.toFixed(7)}°
-        `, { maxWidth: 220 });
-        
-        marker.bindTooltip(`Датчик ${sensor.id} (${sensor.offset_m} м)`, { 
-            permanent: false, 
-            direction: 'top',
-            offset: [0, -20]
-        });
-        
-        points.push([sensor.lat, sensor.lng]);
-        
-        if (previousPoint) {
-            L.polyline([previousPoint, [sensor.lat, sensor.lng]], {
-                color: '#ff8888',
-                weight: 3,
-                opacity: 0.8
-            }).addTo(map);
+        // Объекты карты
+        let gpsMarker = null, sensorMarkers = [], sensorLine = null, courseArrow = null, trackLine = null;
+        const trackPoints = [];
+
+        // 🔘 Переключение Пауза/Старт
+        function toggleAutoPan() {
+            autoPanEnabled = !autoPanEnabled;
+            const btn = document.getElementById('toggle-btn');
+            const icon = document.getElementById('toggle-icon');
+            const text = document.getElementById('toggle-text');
+            const status = document.getElementById('status');
+            
+            if (autoPanEnabled) {
+                btn.classList.remove('paused');
+                icon.textContent = '⏸️';
+                text.textContent = 'Пауза';
+                status.className = 'status-ok';
+                status.textContent = '▶️ Авто-панорамирование включено';
+                if (gpsMarker) {
+                    map.setView(gpsMarker.getLatLng(), Math.max(20, map.getZoom()));
+                }
+            } else {
+                btn.classList.add('paused');
+                icon.textContent = '▶️';
+                text.textContent = 'Старт';
+                status.className = 'status-paused';
+                status.textContent = '⏸️ Пауза: масштаб и позиция фиксированы';
+            }
         }
-        previousPoint = [sensor.lat, sensor.lng];
-    });
-    
-    // Основная линия рейки
-    L.polyline(points, {
-        color: '#2c3e50',
-        weight: 5,
-        opacity: 0.95
-    }).addTo(map);
-    
-    // === СТРЕЛКА И ПОДПИСЬ АЗИМУТА СМЕЩЕНЫ В СТОРОНУ ===
-    // Находим точку для подписи (смещаем вправо от середины рейки)
-    const midPoint = {
-        lat: (sensors[0].lat + sensors[3].lat) / 2,
-        lng: (sensors[0].lng + sensors[3].lng) / 2
-    };
-    
-    // Смещаем подпись на 8 метров вправо (перпендикулярно направлению рейки)
-    const offsetLabel = offsetPoint(midPoint.lat, midPoint.lng, azimuth_true, 8, 'right');
-    
-    // Подпись азимута (смещённая)
-    L.marker([offsetLabel.lat, offsetLabel.lng], {
-        icon: L.divIcon({
-            html: `<div style="
-                background: rgba(0,0,0,0.8);
-                color: white;
-                padding: 6px 16px;
-                border-radius: 25px;
-                font-size: 13px;
-                font-weight: bold;
-                white-space: nowrap;
-                border: 1px solid rgba(255,255,255,0.4);
-                backdrop-filter: blur(4px);
-                font-family: monospace;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-                pointer-events: none;
-            ">🧭 Азимут ${azimuth_true.toFixed(2)}° (Юго-Восток)</div>`,
-            iconSize: [230, 34]
-        })
-    }).addTo(map);
-    
-    // Соединительная линия от подписи к рейке (пунктир)
-    L.polyline([[midPoint.lat, midPoint.lng], [offsetLabel.lat, offsetLabel.lng]], {
-        color: '#888',
-        weight: 1.5,
-        dashArray: '5, 5',
-        opacity: 0.5,
-        interactive: false
-    }).addTo(map);
-    
-    // Стрелку тоже смещаем подальше от ID3 (на 4 метра вперёд и 3 метра в сторону)
-    const arrowOffset = offsetPoint(sensors[3].lat, sensors[3].lng, azimuth_true, 4, 'left');
-    
-    L.marker([arrowOffset.lat, arrowOffset.lng], {
-        icon: L.divIcon({
-            html: `<div style="
-                font-size: 38px;
-                filter: drop-shadow(0 2px 5px rgba(0,0,0,0.5));
-                transform: rotate(${azimuth_true - 90}deg);
-                pointer-events: none;
-            ">➡️</div>`,
-            iconSize: [40, 40]
-        })
-    }).addTo(map);
-    
-    // Маленькая стрелка-указатель на конце рейки (прозрачная, для связи)
-    L.polyline([[sensors[3].lat, sensors[3].lng], [arrowOffset.lat, arrowOffset.lng]], {
-        color: '#aaa',
-        weight: 1.5,
-        dashArray: '3, 4',
-        opacity: 0.4,
-        interactive: false
-    }).addTo(map);
-    
-    // Маркеры расстояний через 0.6 м
-    for (let i = 0.6; i <= 3.0; i += 0.6) {
-        const t = i / 3.6;
-        const lat_i = sensors[0].lat + (sensors[3].lat - sensors[0].lat) * t;
-        const lng_i = sensors[0].lng + (sensors[3].lng - sensors[0].lng) * t;
-        
-        L.circleMarker([lat_i, lng_i], {
-            radius: 4,
-            color: '#ffaa44',
-            weight: 2,
-            fillColor: '#ffcc44',
-            fillOpacity: 0.9
-        }).addTo(map).bindTooltip(`${i.toFixed(1)} м`, { permanent: false, direction: 'top' });
-    }
-    
-    // Настройки карты
-    map.setMaxZoom(22);
-    map.setMinZoom(18);
-    map.fitBounds(L.latLngBounds(points).pad(0.02));
-    
-    // Масштабная линейка
-    L.control.scale({ metric: true, imperial: false, position: 'bottomleft' }).addTo(map);
-    
-    // Вывод информации в консоль
-    const actualLength = haversineDistance(
-        sensors[0].lat, sensors[0].lng,
-        sensors[3].lat, sensors[3].lng
-    );
-    
-    console.log("=== КАРТА С ОТНЕСЁННОЙ СТРЕЛКОЙ ===");
-    console.log(`Азимут: ${azimuth_true.toFixed(4)}°`);
-    console.log(`Длина рейки: ${actualLength.toFixed(3)} м (погрешность: ${Math.abs(actualLength - 3.6).toFixed(4)} м)`);
-    console.log(`Подпись и стрелка смещены, чтобы не перекрывать датчики`);
-    
-    // Приветственный попап
-    setTimeout(() => {
-        map.openPopup(
-            `<b>✅ Стрелка и подпись смещены в сторону</b><br>
-             📍 Датчики теперь хорошо видны<br>
-             🧭 Азимут: ${azimuth_true.toFixed(2)}°<br>
-             🔍 Максимальный зум: 22x`,
-            [centerLat, centerLng],
-            { closeButton: true, autoClose: 3500 }
-        );
-    }, 500);
-</script>
+
+        // Загрузка последней записи
+        async function loadLastRecord() {
+            try {
+                const response = await fetch('field_data.jsonl?t=' + Date.now(), { cache: 'no-store' });
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                
+                const text = await response.text();
+                const lines = text.trim().split('\n').filter(l => l.trim());
+                if (!lines.length) throw new Error('Пустой файл');
+                
+                const data = JSON.parse(lines[lines.length - 1]);
+                updateMap(data);
+                updateStatus('ok', '✓ ' + new Date().toLocaleTimeString());
+            } catch (e) {
+                console.warn('⚠️ Ошибка:', e.message);
+                updateStatus('error', '✗ ' + e.message);
+            }
+        }
+
+        // Обновление карты
+        function updateMap(data) {
+            if (!data?.valid || !data.gps?.latitude) return;
+            const { latitude: lat, longitude: lon, azimuth_true: az } = data.gps;
+
+            // GPS маркер
+            if (gpsMarker) {
+                gpsMarker.setLatLng([lat, lon]);
+            } else {
+                gpsMarker = L.circleMarker([lat, lon], {
+                    radius: 10, color: '#ff4444', fillColor: '#ff6666',
+                    fillOpacity: 0.9, weight: 3
+                }).addTo(map).bindPopup('<b>📍 GPS-антенна</b>');
+            }
+
+            // Датчики
+            sensorMarkers.forEach(m => map.removeLayer(m));
+            sensorMarkers = [];
+            const coords = [];
+
+            data.sensors?.forEach(s => {
+                if (s?.latitude) {
+                    const m = L.circleMarker([s.latitude, s.longitude], {
+                        radius: 8, color: '#3388ff', fillColor: '#66aaff',
+                        fillOpacity: 0.85, weight: 2
+                    }).addTo(map);
+                    m.bindPopup(`<div class="sensor-popup"><b>🔌 S${s.id}</b><br>${s.latitude.toFixed(7)}, ${s.longitude.toFixed(7)}<br>📊 ${s.amplitude_nt?.toFixed(1) || 'N/A'} нТл</div>`);
+                    sensorMarkers.push(m);
+                    coords.push([s.latitude, s.longitude]);
+                }
+            });
+
+            // Линия косы
+            if (sensorLine) map.removeLayer(sensorLine);
+            if (coords.length > 1) {
+                sensorLine = L.polyline(coords, {
+                    color: '#ff8800', weight: 4, opacity: 0.9, dashArray: '12, 8'
+                }).addTo(map);
+            }
+
+            // Стрелка курса
+            if (courseArrow) map.removeLayer(courseArrow);
+            const len = 0.00008;
+            const endLat = lat + len * Math.cos(az * Math.PI / 180);
+            const endLon = lon + len * Math.sin(az * Math.PI / 180);
+            courseArrow = L.polyline([[lat, lon], [endLat, endLon]], {
+                color: '#00cc00', weight: 3, opacity: 0.85
+            }).addTo(map);
+
+            // Трек
+            trackPoints.push([lat, lon]);
+            if (trackPoints.length > 100) trackPoints.shift();
+            if (trackLine) map.removeLayer(trackLine);
+            if (trackPoints.length > 1) {
+                trackLine = L.polyline(trackPoints, {
+                    color: '#9933ff', weight: 2, opacity: 0.5
+                }).addTo(map);
+            }
+
+            // Обновление интерфейса
+            document.getElementById('gps-coords').textContent = `${lat.toFixed(5)}°, ${lon.toFixed(5)}°`;
+            document.getElementById('azimuth').textContent = `${az?.toFixed(1) || '-'}°`;
+            document.getElementById('offset').textContent = data.geometry_params?.['1']?.dx ? `${data.geometry_params['1'].dx} м` : '-';
+            document.getElementById('spacing').textContent = data.geometry_params?.['1']?.dy ? `${(Math.abs(data.geometry_params['1'].dy)*2).toFixed(1)} м` : '-';
+            document.getElementById('last-update').textContent = new Date(data.timestamp_utc * 1000).toLocaleTimeString();
+
+            // 🔑 Автоцентрирование только если включено
+            if (autoPanEnabled) {
+                const bounds = L.latLngBounds([[lat, lon], ...coords]);
+                map.fitBounds(bounds.pad(0.25), { maxZoom: 22, animate: true });
+            }
+        }
+
+        function updateStatus(type, msg) {
+            const el = document.getElementById('status');
+            if (!autoPanEnabled && type !== 'error') return;
+            el.className = `status-${type}`;
+            el.textContent = msg;
+        }
+
+        // Автообновление
+        loadLastRecord();
+        setInterval(loadLastRecord, 1500);
+
+        map.on('error', (e) => console.error('Map error:', e));
+    </script>
 </body>
 </html>
