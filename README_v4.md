@@ -127,19 +127,6 @@ res = GEOD.Direct(lat_gps, lon_gps, true_bearing, dist)
 4. Если длина = 23 байта и синхробайты (`0x00` и `0xFF`) на месте, кадр считается валидным.
 5. Извлекаются `sensor_id`, `amplitude_nt`, `gradient_nt`; обновляется словарь `latest` для соответствующего сенсора.
 
-```mermaid
-flowchart TD
-    A[Последовательный порт] --> B[Накопление байтов]
-    B --> C{Найден маркер 0x12345678?}
-    C -- Да --> D[Отступить на 19 байт назад]
-    D --> E{Длина 23 и синхро OK?}
-    E -- Да --> F["Парсинг: id, амплитуда, градиент"]
-    F --> G["Обновление latest[id]"]
-    C -- Нет --> B
-    E -- Нет --> H[Пропустить байты до следующего маркера]
-    H --> B
-```
-
 ---
 
 ### 🔹 2. Парсинг NMEA‑сообщений GPS+компас
@@ -156,22 +143,6 @@ flowchart TD
 4. Истинный азимут: `azimuth_true = azimuth_magnetic + declination` (склонение из WMM).
 5. GPS‑курс (`course_true`) берётся из NMEA как есть, но используется только для диагностики.
 
-```mermaid
-sequenceDiagram
-    participant GPS as GPS/Compass 10Hz
-    participant Parser as parse_nmea_extended
-    participant Queue as gps_queue
-    participant Processor as PacketProcessor
-
-    GPS->>Parser: NMEA sentence + magnetometer
-    Parser->>Parser: Извлечение lat, lon, time, mx, my
-    Parser->>Parser: az_mag = atan2(-my, mx)
-    Parser->>Parser: decl = get_declination(lat, lon)
-    Parser->>Parser: az_true = az_mag + decl
-    Parser-->>Queue: словарь GPS (azimuth_true, lat, lon)
-    Processor->>Queue: извлечение (триггер)
-```
-
 ---
 
 ### 🔹 3. Совместная обработка (формирование JSON‑пакета)
@@ -183,23 +154,6 @@ sequenceDiagram
    - GPS‑часть (координаты антенны, азимут, склонение, курс),
    - массив `sensors` с координатами и показаниями (амплитуда, градиент),
    - метаданные (время, параметры геометрии).
-
-```mermaid
-sequenceDiagram
-    participant GPS_Thread as GPSReader
-    participant SensorThread as BinarySensorReader
-    participant Processor as PacketProcessor
-    participant Geodesy as calculate_sensor_coords_geodetic
-    participant Output as JSONL
-
-    SensorThread-->>SensorThread: постоянно обновляет latest[1..4]
-    GPS_Thread->>Processor: gps_data (очередь)
-    Processor->>SensorThread: запрос latest[1..4] (блокировка)
-    SensorThread-->>Processor: показания сенсоров
-    Processor->>Geodesy: lat, lon, az_true, geometry
-    Geodesy-->>Processor: массив координат сенсоров
-    Processor->>Output: запись JSON-строки
-```
 
 **Важно:** данные сенсоров берутся **асинхронно** — используется самое свежее значение на момент прихода GPS. Это допустимо, потому что частота опроса сенсоров (200 Гц) значительно выше частоты GPS (10 Гц) и задержка не превышает 5 мс.
 
