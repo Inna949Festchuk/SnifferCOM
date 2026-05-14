@@ -134,18 +134,31 @@ def parse_binary_frame(data: bytes, sys_time: float) -> Optional[Dict]:
     if len(data) != 23 or data[0] != 0x00 or data[3] != 0xFF or data[-4:] != b'\x78\x56\x34\x12':
         return None
     try:
-        sensor_id = data[2]
-        if sensor_id not in (1, 2, 3, 4): return None
+        # Байт 3 (индекс 2 в Python) — адрес отправителя (0x01, 0x02, 0x03, 0x04)
+        sensor_id_hex = data[2]
+        # Преобразуем hex в десятичный номер датчика (1, 2, 3, 4)
+        sensor_id = int(sensor_id_hex)
+
+        # Проверяем, что номер датчика в допустимом диапазоне
+        if sensor_id not in (1, 2, 3, 4):
+            return None
+
         abs_val = struct.unpack('<i', data[7:11])[0] / 10.0
         grad_val = struct.unpack('<i', data[11:15])[0] / 10.0
+
         return {
-            'timestamp_sys': sys_time, 'sensor_id': sensor_id,
-            'amplitude_nt': abs_val, 'gradient_nt': grad_val,
-            'filter_mode': data[6], 'length': struct.unpack('<H', data[15:17])[0],
-            'checksum': struct.unpack('<H', data[17:19])[0], 'command': data[5]
+            'timestamp_sys': sys_time,
+            'sensor_id': sensor_id,
+            'amplitude_nt': abs_val,
+            'gradient_nt': grad_val,
+            'filter_mode': data[6],
+            'length': struct.unpack('<H', data[15:17])[0],
+            'checksum': struct.unpack('<H', data[17:19])[0],
+            'command': data[5]
         }
     except struct.error:
         return None
+
 
 def parse_nmea_extended(line: str, sys_time: float, declination_override: Optional[float] = None) -> Optional[Dict]:
     line = line.strip('\r\n')
@@ -205,6 +218,7 @@ def parse_nmea_extended(line: str, sys_time: float, declination_override: Option
             # ось Y направлена направо. Чтобы получить навигационный угол
             # через стандартный арктангенс, используется именно формула atan2(-Y, X).
             az_mag = (math.degrees(math.atan2(-mag_data['y'], mag_data['x'])) + 360) % 360
+            
             res['azimuth_magnetic'] = round(az_mag, 4)
             
             # Истинный азимут устройства = Магнитный + Склонение
@@ -256,21 +270,24 @@ class BinarySensorReader:
                     marker_pos = self.buffer.find(b'\x78\x56\x34\x12')
                     if marker_pos == -1 or len(self.buffer) < marker_pos + 4:
                         break
-                    
+
                     start_pos = marker_pos - 19
                     if start_pos < 0:
                         self.buffer = self.buffer[marker_pos + 4:]
                         continue
 
-                    frame = self.buffer[start_pos : marker_pos + 4]
+                    frame = self.buffer[start_pos:marker_pos + 4]
                     self.buffer = self.buffer[marker_pos + 4:]
 
                     if len(frame) == 23:
                         parsed = parse_binary_frame(frame, time.time())
-                        if parsed and parsed['sensor_id'] in (1, 2, 3, 4):
+                        if parsed and parsed['sensor_id'] in (1, 2, 3, 4):  # теперь корректно проверяет ID
                             self.stats['parsed'] += 1
-                            with self.lock: self.latest[parsed['sensor_id']] = parsed
-                        else: self.stats['errors'] += 1
+                            with self.lock:
+                                self.latest[parsed['sensor_id']] = parsed
+                        else:
+                            self.stats['errors'] += 1
+
             except serial.SerialException:
                 logger.warning(f"[{self.name}] Разрыв...")
                 if self.ser and self.ser.is_open: self.ser.close()
@@ -394,11 +411,36 @@ class PacketProcessor:
         lon = rec['gps'].get('longitude')
         az = rec['gps'].get('azimuth_true')
         decl = rec['gps'].get('declination_deg')
-        ls = f"{lat:.5f}" if lat is not None else "------"
-        os_ = f"{lon:.5f}" if lon is not None else "------"
+
+        ls = f"{lat:.5f}" if lat is not None else "---"
+        os_ = f"{lon:.5f}" if lon is not None else "---"
         azs = f"{az:.1f}°" if az is not None else "---°"
         decls = f"{decl:.1f}°" if decl is not None else "---°"
-        print(f"{s} #{self.stats['packets']:05d} UTC={rec['timestamp_utc']:.3f} | 📍 {ls},{os_} | 🧭 {azs} | Decl: {decls} | датчиков: {len(rec['sensors'])}", flush=True)
+
+        # Извлекаем амплитуду и градиент для всех датчиков
+        amplitudes = []
+        gradients = []
+
+        for sensor in rec['sensors']:
+            amp = sensor.get('amplitude_nt')
+            grad = sensor.get('gradient_nt')
+
+            # Форматируем значения: если None — заменяем на "---"
+            amp_str = f"{amp:.1f}" if amp is not None else "---"
+            grad_str = f"{grad:.1f}" if grad is not None else "---"
+
+            amplitudes.append(amp_str)
+            gradients.append(grad_str)
+
+        # Формируем строки для вывода
+        amp_output = " | ".join(amplitudes)
+        grad_output = " | ".join(gradients)
+
+        print(f"{s} #{self.stats['packets']:05d} UTC={rec['timestamp_utc']:.3f} "
+            f"| 📍 {ls},{os_} | 🧭 {azs} | Decl: {decls} "
+            f"| датчиков: {len(rec['sensors'])} "
+            f"| амплитуда (нТ): {amp_output} "
+            f"| градиент (нТ/м): {grad_output}")
 
 # ============================================================================
 # 💾 ВЫВОД & CLI
