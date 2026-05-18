@@ -30,17 +30,27 @@ class CORSHandler(http.server.SimpleHTTPRequestHandler):
         self.send_response(200)
         self.end_headers()
     
+    
     def do_GET(self):
         """
         Обработка GET запросов.
-        Специальная обработка для .jsonl файлов (отправка как есть).
-        """
-        # Проверка на favicon.ico - отправляем 204 (No Content) вместо 404
+        Специальная обработка для .jsonl файлов
+        """ 
+        # Favicon
         if self.path == '/favicon.ico':
-            self.send_response(204)  # No Content
+            self.send_response(204)
             self.end_headers()
             return
         
+        # Заглушка для data-updates
+        if self.path.startswith('/data-updates/'):
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/plain')
+            self.end_headers()
+            self.wfile.write(b'OK')
+            return
+        
+        # Обработка JSONL
         if self.path.endswith('.jsonl'):
             self.send_response(200)
             self.send_header('Content-Type', 'application/x-jsonlines')
@@ -50,16 +60,13 @@ class CORSHandler(http.server.SimpleHTTPRequestHandler):
                 try:
                     with open(filepath, 'rb') as f:
                         self.wfile.write(f.read())
-                except Exception as e:
-                    # Тихая обработка ошибок чтения файла
+                except Exception:
                     pass
             else:
-                # Файл не существует - возвращаем пустой массив (клиент сам обработает)
                 self.wfile.write(b'')
         else:
-            # Для всех остальных файлов используем стандартную обработку
             super().do_GET()
-    
+
     def log_message(self, format, *args):
         """
         Безопасное логирование запросов.
